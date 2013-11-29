@@ -1,7 +1,10 @@
 /* movepid
  *
- * Copyright © 2013 Stéphane Graber
- * Author: Stéphane Graber <stgraber@ubuntu.com>
+ * Copyright © 2013 Serge Hallyn
+ * Author: Serge Hallyn <serge.hallyn@ubuntu.com>
+ *
+ * This is only for testing purposes - we really want to update dbus-send
+ * to accept a 'pid' arg type which sends the pid as a scm_credential.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2, as
@@ -47,35 +50,70 @@
 #define PACKAGE_VERSION "0.0"
 #define PACKAGE_BUGREPORT ""
 
+static int pid = -1;
+static const char *controller;
+static const char *cgroup;
+
+typedef int (*NihOptionSetter) (NihOption *option, const char *arg);
+
+int set_pid(NihOption *option, const char *arg)
+{
+	unsigned long int p;
+nih_info("arg is %s", arg);
+	errno = 0;
+	p = strtoul(arg, NULL, 10);
+nih_info("p is %lu", p);
+	nih_assert(errno == 0);
+	nih_assert(p < INT_MAX);
+	if (!p)
+		pid = getpid();
+	else
+		pid = (int)p;
+	return 0;
+}
+
+int set_cgroup(NihOption *option, const char *arg)
+{
+	cgroup = arg;
+	return 0;
+}
+
+int set_controller(NihOption *option, const char *arg)
+{
+	controller = arg;
+	return 0;
+}
+
 /**
  * options:
  *
  * Command-line options accepted by this program.
  **/
 static NihOption options[] = {
-	{ 0, "daemon", N_("Detach and run in the background"),
-	  NULL, NULL, &daemonise, NULL },
+	{ 'c', "controller", N_("Controller for which to act"),
+	  NULL, "CONTROLLER", NULL, set_controller },
+	{ 'n', "name", N_("Cgroup name to which to move pid"),
+	  NULL, "NAME", NULL, set_cgroup },
+	{ 'p', "pid", N_("Pid to move"),
+	  NULL, "PID", NULL, set_pid },
 
 	NIH_OPTION_LAST
 };
 
-void send_message(struct DBusConnection *conn, const char *cgroup)
+void send_message(struct DBusConnection *conn)
 {
 	DBusMessage *    message;
 	DBusMessageIter iter, subiter;
 
-	message = dbus_message_new_method_call(NULL. "unix:path=/tmp/cgmanager",
+	message = dbus_message_new_method_call(dbus_bus_get_unique_name(conn),
 			"/org/linuxcontainers/cgmanager",
 			"org.linuxcontainers.cgmanager0_0", "movePid");
-        if (! dbus_message_iter_append_basic (&subiter, DBUS_TYPE_STRING,
-                                              &colour)) {
-                nih_error_raise_no_memory ();
-                return -1;
-        }
 
-        if (! dbus_message_iter_close_container (iter, &subiter)) {
+	dbus_message_iter_init_append(message, &iter);
+        if (! dbus_message_iter_append_basic (&iter, DBUS_TYPE_STRING,
+                                              &cgroup)) {
                 nih_error_raise_no_memory ();
-                return -1;
+                return;
         }
 
 	dbus_connection_send(conn, message, NULL);
@@ -90,8 +128,8 @@ void send_pid(int sock, int pid)
 	struct cmsghdr *cmsg;
 	struct ucred cred = {
 		.pid = pid,
-		.uid = uid,
-		.gid = gid,
+		.uid = getuid(),
+		.gid = getgid(),
 	};
 	char cmsgbuf[CMSG_SPACE(sizeof(cred))];
 	char buf[1];
@@ -113,7 +151,12 @@ void send_pid(int sock, int pid)
 	msg.msg_iov = &iov;
 	msg.msg_iovlen = 1;
 
-	return sendmsg(sock, &msg, 0);
+	sendmsg(sock, &msg, 0);
+}
+
+static void usage(char *me) {
+	fprintf(stderr, "Usage: %s -c controller -n cgroup-name -p pid\n", me);
+	exit(1);
 }
 
 int
@@ -121,7 +164,6 @@ main (int   argc,
       char *argv[])
 {
 	char **             args;
-	int                 ret;
 	DBusConnection *    conn;
 	int fd;
 
@@ -134,6 +176,12 @@ main (int   argc,
 	if (! args)
 		exit (1);
 
+	if (!controller || !cgroup)
+		usage(argv[0]);
+
+	if (pid == -1)
+		pid = getpid();
+
 	conn = nih_dbus_connect("unix:path=/tmp/cgmanager", NULL);
 	nih_assert (conn != NULL);
 
@@ -143,5 +191,5 @@ main (int   argc,
 
 	dbus_connection_unref (conn);
 
-	return ret;
+	exit(0);
 }
