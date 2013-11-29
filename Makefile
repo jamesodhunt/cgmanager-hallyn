@@ -9,6 +9,9 @@ org.linuxcontainers.cgmanager.h:
 cgmanager: org.linuxcontainers.cgmanager.h fs.h fs.c
 	gcc -D_GNU_SOURCE $(shell pkg-config --cflags dbus-1) org.linuxcontainers.cgmanager.c cgmanager.c fs.c -ldbus-1 -lnih -lnih-dbus -o cgmanager
 
+movepid: movepid.c
+	gcc -D_GNU_SOURCE $(shell pkg-config --cflags dbus-1) movepid.c -ldbus-1 -lnih -lnih-dbus -o movepid
+
 run-server: cgmanager
 	./cgmanager --debug
 
