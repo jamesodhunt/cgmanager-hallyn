@@ -96,7 +96,10 @@ int cgmanager_get_stuff (void *data, NihDBusMessage *message,
 	}
 }
 
-
+static dbus_bool_t allow_user(DBusConnection *connection, unsigned long uid, void *data)
+{
+	return TRUE;
+}
 
 static int
 client_connect (DBusServer *server, DBusConnection *conn)
@@ -105,6 +108,8 @@ client_connect (DBusServer *server, DBusConnection *conn)
 	nih_assert (conn != NULL);
 
 	nih_info (_("Connection from private client"));
+
+	dbus_connection_set_unix_user_function(conn, allow_user, NULL, NULL);
 
 	NIH_MUST (nih_dbus_object_new (NULL, conn,
 	          "/org/linuxcontainers/cgmanager",
