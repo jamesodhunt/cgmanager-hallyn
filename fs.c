@@ -418,7 +418,7 @@ bool compute_pid_cgroup(pid_t pid, const char *controller, const char *cgroup, c
 	return true;
 }
 
-char *file_read_string(const char *path)
+char *file_read_string(void *parent, const char *path)
 {
 	int ret, fd = open(path, O_RDONLY);
 	char *string = NULL;
@@ -431,8 +431,8 @@ char *file_read_string(const char *path)
 	while (1) {
 		char *n;
 		sz += 1024;
-		if (!(n = realloc(string, sz))) {
-			free(string);
+		if (!(n = nih_realloc(string, parent, sz))) {
+			nih_free(string);
 			string = NULL;
 			goto out;
 		}
@@ -440,7 +440,7 @@ char *file_read_string(const char *path)
 		memset(string+sz-1024, 0, 1024);
 		ret = read(fd, string+sz-1024, 1024);
 		if (ret < 0) {
-			free(string);
+			nih_free(string);
 			string = NULL;
 			goto out;
 		}
@@ -449,6 +449,7 @@ char *file_read_string(const char *path)
 	}
 out:
 	close(fd);
+	drop_newlines(string);
 	return string;
 }
 
